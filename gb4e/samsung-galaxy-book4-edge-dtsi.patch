@@ -142,7 +142,41 @@
  };
  
  &i2c5 {
-@@ -1120,28 +1214,26 @@
+@@ -923,12 +1017,33 @@
+ 	};
+ };
+ 
++/* USB-C port 0: Samsung S2MM006 PD controller at 0x33 (ACPI EMEC, IC10) */
++&i2c9 {
++	clock-frequency = <400000>;
++
++	status = "okay";
++};
++
+ &i2c13 {
+ 	clock-frequency = <400000>;
+ 
+ 	status = "okay";
+ };
+ 
++/* USB-C port 1: Samsung S2MM006 PD controller at 0x33 (ACPI EMEC, IC16) */
++&i2c15 {
++	clock-frequency = <400000>;
++
++	status = "okay";
++};
++
++/* Charger at 0x09 and smart battery at 0x0b (ACPI EMEC, IC21) */
++&i2c20 {
++	clock-frequency = <100000>;
++
++	status = "okay";
++};
++
+ &lpass_tlmm {
+ 	spkr_01_sd_n_active: spkr-01-sd-n-active-state {
+ 		pins = "gpio12";
+@@ -1120,28 +1235,26 @@
  	pinctrl-0 = <&wsa_swr_active>, <&spkr_01_sd_n_active>;
  	pinctrl-names = "default";
  
@@ -185,7 +219,7 @@
  	};
  };
  
-@@ -1173,28 +1265,26 @@
+@@ -1173,28 +1286,26 @@
  	pinctrl-0 = <&wsa2_swr_active>, <&spkr_23_sd_n_active>;
  	pinctrl-names = "default";
  
@@ -228,7 +262,7 @@
  	};
  };
  
-@@ -1202,6 +1292,27 @@
+@@ -1202,6 +1313,27 @@
  	gpio-reserved-ranges = <35 1>, /* Unused */
  			       <44 4>; /* SPI (TPM) */
  

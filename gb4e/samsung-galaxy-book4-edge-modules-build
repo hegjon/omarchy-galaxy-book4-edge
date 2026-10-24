@@ -2,8 +2,9 @@
 # Build the Samsung Galaxy Book4 Edge out-of-tree modules (EC battery,
 # ov02c10 with 26 MHz clock support, and the X1E80100 machine driver with
 # WSA883x speaker volume caps) for every installed kernel that has headers,
-# into /usr/lib/modules/<kver>/updates. Run by the pacman hook whenever this
-# package or a kernel's headers are installed or upgraded.
+# into /usr/lib/modules/<kver>/updates, and the USB-C service. Run by the
+# pacman hook whenever this package or a kernel's headers are installed or
+# upgraded.
 set -u
 rc=0
 for build in /usr/lib/modules/*/build; do
@@ -29,4 +30,21 @@ for build in /usr/lib/modules/*/build; do
     rm -rf "$tmp"
   done
 done
+
+# The USB-C service is a plain C program; build it when its source changes.
+src=/usr/src/samsung-galaxy-book4-edge-usbc
+dst=/usr/lib/samsung-galaxy-book4-edge/usbc
+if [[ -f $src/usbc.c && ! ( -x $dst && $dst -nt $src/usbc.c ) ]]; then
+  tmp=$(mktemp -d)
+  cp -r "$src"/. "$tmp"/
+  if make -s -C "$tmp" usbc; then
+    install -D -m 0755 "$tmp"/usbc "$dst"
+    echo "usbc: built"
+    systemctl try-restart samsung-galaxy-book4-edge-usbc.service 2>/dev/null
+  else
+    echo "usbc: build failed" >&2
+    rc=1
+  fi
+  rm -rf "$tmp"
+fi
 exit $rc

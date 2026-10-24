@@ -1,7 +1,8 @@
-# The pacman hook builds the modules into each kernel's updates/; pacman
-# doesn't own them, so take them out again when the package goes.
+# The pacman hook builds the modules into each kernel's updates/ and the USB-C
+# service; pacman doesn't own them, so take them out again when the package goes.
 post_remove() {
   local dir
+  rm -f /usr/lib/samsung-galaxy-book4-edge/usbc
   for dir in /usr/lib/modules/*/; do
     rm -f "$dir"updates/{samsung_galaxybook_battery,ov02c10,snd-soc-x1e80100}.ko
     [[ -f ${dir}modules.dep ]] && depmod "$(basename "$dir")"

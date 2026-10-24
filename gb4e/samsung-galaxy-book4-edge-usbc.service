@@ -1,0 +1,14 @@
+[Unit]
+Description=USB-C power switching for the Samsung Galaxy Book4 Edge
+# It writes to the USB-C PD controllers over I2C; never do that on another machine.
+ConditionFirmware=device-tree-compatible(samsung,galaxy-book4-edge-14)
+# Built from /usr/src/samsung-galaxy-book4-edge-usbc by the package's pacman hook.
+ConditionFileIsExecutable=/usr/lib/samsung-galaxy-book4-edge/usbc
+
+[Service]
+ExecStart=/usr/lib/samsung-galaxy-book4-edge/usbc
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

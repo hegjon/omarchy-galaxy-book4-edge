@@ -1,13 +1,14 @@
 # Samsung Galaxy Book4 Edge 14 support for Omarchy: device tree, boot and
-# initramfs settings, Wi-Fi board file, sound, keyboard, Bluetooth, fan, and the
-# sources of three out-of-tree modules, which the pacman hook builds for every
-# kernel with headers. The firmware from Windows is a separate package that
+# initramfs settings, Wi-Fi board file, sound, keyboard, Bluetooth, fan, USB-C
+# power roles, and the sources of three out-of-tree modules and the USB-C
+# service, which the pacman hook builds (the modules for every kernel with
+# headers). The firmware from Windows is a separate package that
 # iso/build.sh makes from your own copy (iso/firmware.PKGBUILD).
 #
 # Build in this directory with makepkg; iso/build.sh does that for the ISO.
 pkgname=samsung-galaxy-book4-edge-14
 pkgver=2026.10.24
-pkgrel=1
+pkgrel=3
 pkgdesc='Samsung Galaxy Book4 Edge 14 support for Omarchy'
 arch=(any)
 url='https://github.com/hegjon/omarchy-galaxy-book4-edge'
@@ -56,19 +57,23 @@ package() {
     62-samsung-galaxy-book4-edge-wsa883x.rules \
     63-samsung-galaxy-book4-edge-bluetooth.rules
 
-  # Bluetooth address and fan services; the fan one is always enabled.
+  # Bluetooth address, fan and USB-C services; the last two are always enabled.
   install -Dm755 samsung-galaxy-book4-edge-bdaddr "$pkgdir/$lib/bdaddr"
   install -Dm755 samsung-galaxy-book4-edge-fan "$pkgdir/$lib/fan"
   install -Dm644 -t "$pkgdir/usr/lib/systemd/system" \
-    samsung-galaxy-book4-edge-bdaddr@.service samsung-galaxy-book4-edge-fan.service
+    samsung-galaxy-book4-edge-bdaddr@.service samsung-galaxy-book4-edge-fan.service \
+    samsung-galaxy-book4-edge-usbc.service
   install -d "$pkgdir/usr/lib/systemd/system/multi-user.target.wants"
-  ln -s ../samsung-galaxy-book4-edge-fan.service \
-    "$pkgdir/usr/lib/systemd/system/multi-user.target.wants/samsung-galaxy-book4-edge-fan.service"
+  local unit
+  for unit in samsung-galaxy-book4-edge-fan.service samsung-galaxy-book4-edge-usbc.service; do
+    ln -s ../$unit "$pkgdir/usr/lib/systemd/system/multi-user.target.wants/$unit"
+  done
 
   # Out-of-tree modules: sources, the build script and the hook that runs it
   # when this package or a kernel's headers are installed or upgraded.
   local src
-  for src in samsung-galaxybook-battery ov02c10-gb4e snd-soc-x1e80100-gb4e; do
+  for src in samsung-galaxybook-battery ov02c10-gb4e snd-soc-x1e80100-gb4e \
+             samsung-galaxy-book4-edge-usbc; do
     install -d "$pkgdir/usr/src/$src"
     cp -r --no-preserve=ownership "$src"/. "$pkgdir/usr/src/$src/"
   done
