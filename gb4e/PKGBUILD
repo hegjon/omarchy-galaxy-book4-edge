@@ -10,7 +10,7 @@ pkgver=2026.10.24
 pkgrel=1
 pkgdesc='Samsung Galaxy Book4 Edge 14 support for Omarchy'
 arch=(any)
-url='https://github.com/omacom/omarchy/discussions/15860'
+url='https://github.com/hegjon/omarchy-galaxy-book4-edge'
 # GPL-2.0: the module sources; board-2.bin and the topology are linux-firmware's.
 license=(GPL-2.0-only LicenseRef-linux-firmware)
 depends=(bluez-utils i2c-tools gcc make)
