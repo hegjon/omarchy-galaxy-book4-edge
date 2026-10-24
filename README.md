@@ -122,16 +122,86 @@ On an existing install (untested): run `makepkg` in `gb4e/`, build the firmware
 package from `iso/firmware.PKGBUILD` next to your five files, and install both
 with `pacman -U`.
 
+## What stock Omarchy would need
+
+Everything here works around something missing upstream. To support this
+machine without this repository:
+
+| Piece | Where it belongs | What it takes |
+| --- | --- | --- |
+| QSEECOM allowlist (EFI variables, installer boot entry, RTC) | linux-omarchy | Carry v8 patch 2/3; the `qcom,x1e80100-qcp` workaround in the tree can then go |
+| Device tree: WSA883x speakers, EC node, camera | linux-omarchy, and the v8 thread | `gb4e/samsung-galaxy-book4-edge-dtsi.patch`, against 7.3 + v8 |
+| Speaker volume | linux-omarchy | `x1e80100-gb4e-volume.patch`: PA 17 and digital 84 (0 dB) on this board |
+| Camera clock | linux-omarchy | `ov02c10-26mhz.patch`: a 26 MHz input clock with Windows' PLL values |
+| Battery | linux-omarchy | An EC battery driver; Saddytech's is out of tree |
+| Live ISO boot | omarchy-iso | This dtb and `x1e80100-samsung-galaxy-book4-edge-14.json` in the live UKI, so DeviceTreeAuto picks the tree and GRUB needn't (untested) |
+| Wi-Fi board data | linux-firmware | A `board-2.bin` entry for 17cb:1107, board-id 255 (`wifi/ath12k_bd.py`) |
+| Sound topology and UCM | linux-firmware, alsa-ucm-conf | `X1E80100-GalaxyBook4Edge-tplg.bin` (the CRD topology) and `gb4e/ucm/` |
+| Keyboard tags, Bluetooth address, fan, cmdline, initramfs | omarchy (a hardware script) | The rest of `gb4e/` |
+
+## Installer findings for other Snapdragon machines
+
+- **No EFI variables stops the install.** Without QSEECOM, efivars is empty
+  and the installer's efibootmgr step fails. `iso/patch-installer.py` makes it
+  warn and go on; the boot entry then has to come from elsewhere (the stick's
+  UEFI Shell entry runs `bcfg`).
+- **msm in the initramfs blacks out the LUKS prompt.** The `kms` hook puts msm
+  in the initramfs. It binds the display, which stops the firmware
+  framebuffer, but can't finish: the USB-C DP controllers wait on pmic_glink,
+  which needs the ADSP from the root file system. Blacklisting msm only inside
+  the initramfs (`gb4e/samsung-galaxy-book4-edge-14-initcpio-install`) keeps
+  simpledrm for the prompt; msm loads after switch root.
+- **`usbcore.autosuspend=-1` must go on the kernel command line.** usbcore is
+  built into linux-omarchy, so `/etc/modprobe.d/omarchy-usb-autosuspend.conf`
+  never applies. Hubs then autosuspend after 2 s and USB-C hubs drop off.
+- **Board support can ride the package list.** Packages in the offline
+  repository and in `omarchy-base.aarch64-qualcomm.packages` are installed with
+  the Omarchy base, after the user is created and before the UKI is built, so
+  their files and pacman hooks are in place for the first boot. A list chosen
+  by device-tree compatible would be safer than the platform-wide one.
+- **Firmware staging checks the live system.** `qcom-firmware-extract --stage`
+  decides what is missing against the live system's `/usr/lib/firmware`, not
+  the target's. A file the ISO itself carries is never staged and never
+  reaches the install; that is how the zap shader once went missing here.
+
 ## Notes for other Snapdragon devices
 
 - The Samsung EC (ENE KB9058, ACPI `SAM060B`) answers on two ports. 0x64 on
   i2c-2 is a mailbox to EC RAM: battery, AC, thermistors. 0x62 on i2c-3 takes
   commands; `17 <rpm, big-endian u32>` sets the fan. These were decoded from
-  Samsung's Windows `EC2.sys`.
+  Samsung's Windows `EC2.sys`. The EC never starts the fan itself.
 - `x1e80100.c` caps PA Volume at 6, which is 0 dB on WSA884x but −3 dB on
   WSA883x (17 is 0 dB there).
-- `usbcore.autosuspend=-1` belongs on the kernel command line on
-  linux-omarchy, not in `modprobe.d`.
+- The hwids JSON has seven CHIDs (types 0, 1, 2, 3, 6, 8/10, 13). Types 0–2
+  include the BIOS version (P00ALC.061.260513 here), so a BIOS update stops
+  them matching; 3, 6, 8 and 13 survive. If none match, systemd-stub loads no
+  tree and the machine resets in a loop.
+- Wi-Fi: linux-firmware has no board data for Samsung's subsystem ID
+  17cb:1107. Windows' own `bdwlan.elf` doesn't work on Linux (the firmware
+  never answers the board-data download, `-110` after 10 s); linux-firmware's
+  shared OEM board-id 255 data does, at a 1.2 Gbit/s link and about 900 Mbit/s
+  measured. ath12k and `qrtr_mhi` oops when unloaded, so the driver can load
+  only once per boot.
+- Bluetooth: the WCN7850 comes up as an unconfigured controller, missing a
+  public address; `btmgmt public-addr` brings it up.
+
+## Open problems
+
+- **USB-C: charger hotplug, device hotplug, DP alt mode.** The ADSP firmware
+  brings up only `audio_pd`: no charger PD and no `PMIC_RTR_ADSP_APPS`
+  channel, so pmic_glink, UCSI and altmode get nothing and no
+  `/sys/class/typec` ports appear. What UEFI set up at boot keeps working; a
+  new attach is never handled. Samsung's driver pack has its own USB-C stack
+  (`USB/SecUsbC/UcmEm.sys`, `USB/SecEmuEc/EmuEc.sys`, with PDIC firmware
+  strings), so PD is probably handled by a Samsung PD controller, not the ADSP.
+- **Performance modes and fan speed.** Samsung's Quiet/Optimized/Performance
+  modes go through an EC command (`CMDD(0xEE, [0x80, mode])`) that isn't
+  decoded, and no tachometer reading has been found.
+- **WSA883x shared reset.** With runtime PM, the second amp on each SoundWire
+  bus fails to resume (`-16`); `62-samsung-galaxy-book4-edge-wsa883x.rules`
+  keeps the amps powered. A retry in the driver would be the real fix.
+- **Speaker protection.** The amps run at 0 dB with no protection; going
+  higher needs a calibrated profile, and Samsung's ACDB is encrypted.
 
 ## Credits and licenses
 
