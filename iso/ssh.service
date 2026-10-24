@@ -1,0 +1,13 @@
+[Unit]
+Description=SSH from @SSH_FROM@ for a Galaxy Book4 Edge test install
+Wants=sshd.service
+After=ufw.service
+
+[Service]
+Type=oneshot
+# Idempotent: ufw skips a rule it already has. Done at boot rather than at
+# install time, where ufw can't reach netfilter.
+ExecStart=/usr/bin/ufw allow from @SSH_FROM@ to any port 22 proto tcp
+
+[Install]
+WantedBy=multi-user.target

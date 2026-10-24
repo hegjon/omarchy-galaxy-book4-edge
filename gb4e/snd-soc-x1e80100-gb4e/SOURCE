@@ -1,0 +1,3 @@
+sound/soc/qcom/x1e80100.c (+ common.h, sdw.h, qdsp6/q6afe.h,
+qdsp6/q6dsp-common.h) from Linux 7.3, plus x1e80100-gb4e-volume.patch:
+PA Volume cap 17 (0 dB on WSA883x) and Digital Volume cap 84 (0 dB).

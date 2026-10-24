@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Samsung Galaxy Book4 Edge 14: keep msm out of the initramfs.
+
+build() {
+    add_dir /etc/modprobe.d
+    printf 'blacklist msm\n' > "$BUILDROOT/etc/modprobe.d/samsung-galaxy-book4-edge-14-initrd.conf"
+}
+
+help() {
+    cat <<HELPEOF
+The kms hook puts msm in the initramfs. There it binds the display subsystem,
+which stops the firmware framebuffer's scanout, but it can't finish: the
+USB-C DisplayPort controllers wait on pmic_glink, which needs the ADSP from
+the root file system. The LUKS prompt then stays black. This hook blacklists
+msm in the initramfs only; it loads normally after switch root.
+HELPEOF
+}

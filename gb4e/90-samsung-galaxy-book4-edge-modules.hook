@@ -1,0 +1,13 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Path
+Target = usr/lib/modules/*/build/Makefile
+Target = usr/src/samsung-galaxybook-battery/*
+Target = usr/src/ov02c10-gb4e/*
+Target = usr/src/snd-soc-x1e80100-gb4e/*
+
+[Action]
+Description = Building the Samsung Galaxy Book4 Edge modules...
+When = PostTransaction
+Exec = /usr/lib/samsung-galaxy-book4-edge/build-modules

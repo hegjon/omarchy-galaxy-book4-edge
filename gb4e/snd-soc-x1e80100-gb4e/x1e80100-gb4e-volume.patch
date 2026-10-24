@@ -1,0 +1,21 @@
+--- a/sound/soc/qcom/x1e80100.c
++++ b/sound/soc/qcom/x1e80100.c
+@@ -47,10 +47,18 @@
+ 		 * cap left its speakers at roughly half the Windows loudness;
+ 		 * its amplifiers' OCP, PBR and thermal protection (the wsa884x
+ 		 * 2S/4 ohm profile) are relied on instead.
++		 *
++		 * The Samsung Galaxy Book4 Edge has WSA883x amplifiers, whose PA
++		 * Volume steps differ: 6 is -3 dB there and 17 is 0 dB, the cap
++		 * sc8280xp uses for the same amplifiers. Digital Volume is allowed
++		 * to 0 dB (84), the value the four-speaker UCM init requests.
+ 		 */
+ 		if (of_machine_is_compatible("microsoft,denali-oled")) {
+ 			digital_max = 84;
+ 			pa_max = 12;
++		} else if (of_machine_is_compatible("samsung,galaxy-book4-edge")) {
++			digital_max = 84;
++			pa_max = 17;
+ 		} else {
+ 			digital_max = 81;
+ 			pa_max = 6;

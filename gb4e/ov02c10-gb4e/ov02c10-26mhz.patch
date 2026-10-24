@@ -1,0 +1,156 @@
+--- a/drivers/media/i2c/ov02c10.c
++++ b/drivers/media/i2c/ov02c10.c
+@@ -15,7 +15,7 @@
+ #include <media/v4l2-fwnode.h>
+ 
+ #define OV02C10_LINK_FREQ_400MHZ	400000000ULL
+-#define OV02C10_MCLK			19200000
++#define OV02C10_LINK_FREQ_333MHZ	333125000ULL
+ #define OV02C10_RGB_DEPTH		10
+ 
+ #define OV02C10_REG_CHIP_ID		CCI_REG16(0x300a)
+@@ -338,8 +338,44 @@
+ 	"Color Bar type 4",
+ };
+ 
+-static const s64 link_freq_menu_items[] = {
+-	OV02C10_LINK_FREQ_400MHZ,
++/*
++ * The mode tables are written for a 19.2 MHz input clock. Modules with a
++ * 26 MHz oscillator keep the 19.2 MHz MIPI clock limits by running the MIPI
++ * PLL at 26 / 6 * 369 MHz (333.125 MHz link) and leave the system PLL at its
++ * 0x140 default, as the Windows driver for the Samsung Galaxy Book4 Edge does.
++ */
++static const struct reg_sequence ov02c10_26mhz_2lane_pll[] = {
++	{0x0303, 0x06},
++	{0x0304, 0x01},
++	{0x0305, 0x71},
++	{0x0316, 0x40},
++	{0x4837, 0x14},
++};
++
++struct ov02c10_clk_cfg {
++	u32 mclk;
++	s64 link_freq;
++	/* 0: derived from the link frequency */
++	u64 pixel_rate;
++	const struct reg_sequence *pll;
++	unsigned int pll_length;
++	/* PLL settings only exist for this many lanes, 0 for any */
++	u8 lanes;
++};
++
++static const struct ov02c10_clk_cfg ov02c10_clk_cfgs[] = {
++	{
++		.mclk = 19200000,
++		.link_freq = OV02C10_LINK_FREQ_400MHZ,
++	},
++	{
++		.mclk = 26000000,
++		.link_freq = OV02C10_LINK_FREQ_333MHZ,
++		.pixel_rate = 173333333,
++		.pll = ov02c10_26mhz_2lane_pll,
++		.pll_length = ARRAY_SIZE(ov02c10_26mhz_2lane_pll),
++		.lanes = 2,
++	},
+ };
+ 
+ static const struct ov02c10_mode supported_modes[] = {
+@@ -383,11 +419,11 @@
+ 	struct v4l2_ctrl *exposure;
+ 
+ 	struct clk *img_clk;
++	const struct ov02c10_clk_cfg *clk_cfg;
+ 	struct gpio_desc *reset;
+ 	struct regulator_bulk_data supplies[ARRAY_SIZE(ov02c10_supply_names)];
+ 
+ 	/* MIPI lane info */
+-	u32 link_freq_index;
+ 	u8 mipi_lanes;
+ };
+ 
+@@ -500,14 +536,16 @@
+ 	ov02c10->link_freq = v4l2_ctrl_new_int_menu(ctrl_hdlr,
+ 						    &ov02c10_ctrl_ops,
+ 						    V4L2_CID_LINK_FREQ,
+-						    ov02c10->link_freq_index, 0,
+-						    link_freq_menu_items);
++						    0, 0,
++						    &ov02c10->clk_cfg->link_freq);
+ 	if (ov02c10->link_freq)
+ 		ov02c10->link_freq->flags |= V4L2_CTRL_FLAG_READ_ONLY;
+ 
+ 	/* MIPI lanes are DDR -> use link-freq * 2 */
+-	pixel_rate = div_u64(link_freq_menu_items[ov02c10->link_freq_index] *
+-			     2 * ov02c10->mipi_lanes, OV02C10_RGB_DEPTH);
++	pixel_rate = ov02c10->clk_cfg->pixel_rate;
++	if (!pixel_rate)
++		pixel_rate = div_u64(ov02c10->clk_cfg->link_freq *
++				     2 * ov02c10->mipi_lanes, OV02C10_RGB_DEPTH);
+ 
+ 	ov02c10->pixel_rate = v4l2_ctrl_new_std(ctrl_hdlr, &ov02c10_ctrl_ops,
+ 						V4L2_CID_PIXEL_RATE, 0,
+@@ -612,6 +650,13 @@
+ 		goto out;
+ 	}
+ 
++	ret = regmap_multi_reg_write(ov02c10->regmap, ov02c10->clk_cfg->pll,
++				     ov02c10->clk_cfg->pll_length);
++	if (ret) {
++		dev_err(ov02c10->dev, "failed to write pll settings\n");
++		goto out;
++	}
++
+ 	ret = __v4l2_ctrl_handler_setup(ov02c10->sd.ctrl_handler);
+ 	if (ret)
+ 		goto out;
+@@ -834,15 +879,11 @@
+ 
+ 	ret = v4l2_link_freq_to_bitmap(dev, bus_cfg.link_frequencies,
+ 				       bus_cfg.nr_of_link_frequencies,
+-				       link_freq_menu_items,
+-				       ARRAY_SIZE(link_freq_menu_items),
++				       &ov02c10->clk_cfg->link_freq, 1,
+ 				       &link_freq_bitmap);
+ 	if (ret)
+ 		goto check_hwcfg_error;
+ 
+-	/* v4l2_link_freq_to_bitmap() guarantees at least 1 bit is set */
+-	ov02c10->link_freq_index = ffs(link_freq_bitmap) - 1;
+-
+ 	if (bus_cfg.bus.mipi_csi2.num_data_lanes != 1 &&
+ 	    bus_cfg.bus.mipi_csi2.num_data_lanes != 2) {
+ 		ret = dev_err_probe(dev, -EINVAL,
+@@ -853,6 +894,12 @@
+ 
+ 	ov02c10->mipi_lanes = bus_cfg.bus.mipi_csi2.num_data_lanes;
+ 
++	if (ov02c10->clk_cfg->lanes &&
++	    ov02c10->clk_cfg->lanes != ov02c10->mipi_lanes)
++		ret = dev_err_probe(dev, -EINVAL,
++				    "%u lanes are not supported with a %u Hz clock\n",
++				    ov02c10->mipi_lanes, ov02c10->clk_cfg->mclk);
++
+ check_hwcfg_error:
+ 	v4l2_fwnode_endpoint_free(&bus_cfg);
+ 	return ret;
+@@ -878,6 +925,7 @@
+ {
+ 	struct ov02c10 *ov02c10;
+ 	unsigned long freq;
++	unsigned int i;
+ 	int ret;
+ 
+ 	ov02c10 = devm_kzalloc(&client->dev, sizeof(*ov02c10), GFP_KERNEL);
+@@ -892,7 +940,10 @@
+ 				     "failed to get imaging clock\n");
+ 
+ 	freq = clk_get_rate(ov02c10->img_clk);
+-	if (freq != OV02C10_MCLK)
++	for (i = 0; i < ARRAY_SIZE(ov02c10_clk_cfgs); i++)
++		if (ov02c10_clk_cfgs[i].mclk == freq)
++			ov02c10->clk_cfg = &ov02c10_clk_cfgs[i];
++	if (!ov02c10->clk_cfg)
+ 		return dev_err_probe(ov02c10->dev, -EINVAL,
+ 				     "external clock %lu is not supported",
+ 				     freq);

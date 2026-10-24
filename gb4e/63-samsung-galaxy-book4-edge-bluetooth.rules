@@ -1,0 +1,2 @@
+# The WCN7850 has no Bluetooth address; set one when the controller appears.
+ACTION=="add", SUBSYSTEM=="bluetooth", ENV{DEVTYPE}=="host", KERNEL=="hci[0-9]*", TAG+="systemd", ENV{SYSTEMD_WANTS}+="samsung-galaxy-book4-edge-bdaddr@%k.service"

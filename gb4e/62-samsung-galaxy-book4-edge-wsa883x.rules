@@ -1,0 +1,5 @@
+# Samsung Galaxy Book4 Edge 14: each side's two WSA883x speaker amps share one
+# reset line. When both runtime-suspend, the line is asserted; on resume both
+# re-attach at once and the second amp's init fails with -EBUSY ("Update Slave
+# status failed:-16"), leaving it silent. Keep the amps runtime-active.
+ACTION=="add|bind", SUBSYSTEM=="soundwire", ENV{MODALIAS}=="sdw:m0217p0202*", ATTR{power/control}="on"

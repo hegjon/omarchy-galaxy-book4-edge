@@ -1,0 +1,27 @@
+# Allowlist: everything is ignored unless listed below. Keep ISOs, the kernel
+# tree (k73/) and anything taken from the Windows driver store out of git;
+# that firmware is Qualcomm/Samsung proprietary and not redistributable.
+/*
+!/.gitignore
+!/README.md
+
+!/gb4e/
+/gb4e/firmware/
+/gb4e/wifi/
+/gb4e/old-anatase-7.2/
+/gb4e/*.wsa884x.dtb
+/gb4e/inject-retry.sh
+/gb4e/retry.sh
+/gb4e/start-dsp.sh
+/gb4e/wifi-try.sh
+# makepkg output, if run in gb4e/ without iso/build.sh's directories
+/gb4e/src/
+/gb4e/pkg/
+/gb4e/*.pkg.tar.*
+
+!/wifi/
+/wifi/*
+!/wifi/ath12k_bd.py
+
+!/iso/
+/iso/__pycache__/

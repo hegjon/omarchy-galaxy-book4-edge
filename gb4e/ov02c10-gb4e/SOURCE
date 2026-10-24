@@ -1,0 +1,4 @@
+drivers/media/i2c/ov02c10.c from Linux 7.3, plus 26 MHz input clock support
+(ov02c10-26mhz.patch). PLL values taken from the Windows sensor module
+com.qti.sensormodule.partron_ov02c10.bin and checked on hardware (32.5 fps
+at the default VTS, frames on CSIPHY0).

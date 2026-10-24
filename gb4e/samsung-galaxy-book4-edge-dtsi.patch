@@ -1,0 +1,277 @@
+--- a/arch/arm64/boot/dts/qcom/x1-samsung-galaxy-book4-edge.dtsi
++++ b/arch/arm64/boot/dts/qcom/x1-samsung-galaxy-book4-edge.dtsi
+@@ -203,10 +203,10 @@
+ 	sound {
+ 		compatible = "qcom,x1e80100-sndcard";
+ 		model = "X1E80100-GalaxyBook4Edge";
+-		audio-routing = "WooferLeft IN", "WSA WSA_SPK1 OUT",
+-				"TweeterLeft IN", "WSA WSA_SPK2 OUT",
+-				"WooferRight IN", "WSA2 WSA_SPK1 OUT",
+-				"TweeterRight IN", "WSA2 WSA_SPK2 OUT",
++		audio-routing = "TweeterLeft IN", "WSA WSA_SPK1 OUT",
++				"TweeterRight IN", "WSA WSA_SPK2 OUT",
++				"WooferLeft IN", "WSA2 WSA_SPK1 OUT",
++				"WooferRight IN", "WSA2 WSA_SPK2 OUT",
+ 				"IN1_HPHL", "HPHL_OUT",
+ 				"IN2_HPHR", "HPHR_OUT",
+ 				"AMIC2", "MIC BIAS2",
+@@ -252,9 +252,9 @@
+ 			link-name = "WSA Playback";
+ 
+ 			codec {
+-				sound-dai = <&left_woofer>, <&left_tweeter>,
++				sound-dai = <&left_tweeter>, <&right_tweeter>,
+ 					    <&swr0 0>, <&lpass_wsamacro 0>,
+-					    <&right_woofer>, <&right_tweeter>,
++					    <&left_woofer>, <&right_woofer>,
+ 					    <&swr3 0>, <&lpass_wsa2macro 0>;
+ 			};
+ 
+@@ -284,6 +284,45 @@
+ 		};
+ 	};
+ 
++	/* The camera module has its own oscillator */
++	cam_osc: clock-cam-osc {
++		compatible = "fixed-clock";
++		#clock-cells = <0>;
++		clock-frequency = <26000000>;
++	};
++
++	vreg_cam_1p8: regulator-cam-1p8 {
++		compatible = "regulator-fixed";
++
++		regulator-name = "VREG_CAM_1P8";
++		regulator-min-microvolt = <1800000>;
++		regulator-max-microvolt = <1800000>;
++
++		gpio = <&tlmm 99 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++
++		pinctrl-0 = <&cam_dovdd_en>;
++		pinctrl-names = "default";
++
++		startup-delay-us = <1000>;
++	};
++
++	vreg_cam_2p8: regulator-cam-2p8 {
++		compatible = "regulator-fixed";
++
++		regulator-name = "VREG_CAM_2P8";
++		regulator-min-microvolt = <2800000>;
++		regulator-max-microvolt = <2800000>;
++
++		gpio = <&tlmm 96 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++
++		pinctrl-0 = <&cam_avdd_en>;
++		pinctrl-names = "default";
++
++		startup-delay-us = <1000>;
++	};
++
+ 	vreg_octa_vdd: regulator-octa-vdd {
+ 		compatible = "regulator-fixed";
+ 
+@@ -842,6 +881,55 @@
+ 	status = "okay";
+ };
+ 
++&camss {
++	vdd-csiphy-0p8-supply = <&vreg_l2c_0p8>;
++	vdd-csiphy-1p2-supply = <&vreg_l1c_1p2>;
++
++	status = "okay";
++
++	ports {
++		port@0 {
++			camss_csiphy0_inep: endpoint {
++				clock-lanes = <7>;
++				data-lanes = <0 1>;
++				remote-endpoint = <&ov02c10_ep>;
++			};
++		};
++	};
++};
++
++&cci0 {
++	status = "okay";
++};
++
++&cci0_i2c0 {
++	/* Partron OV02C10 front camera */
++	camera@36 {
++		compatible = "ovti,ov02c10";
++		reg = <0x36>;
++
++		reset-gpios = <&tlmm 109 GPIO_ACTIVE_LOW>;
++		pinctrl-0 = <&cam_rgb_default>;
++		pinctrl-names = "default";
++
++		clocks = <&cam_osc>;
++
++		orientation = <0>; /* Front facing */
++		rotation = <180>;
++
++		avdd-supply = <&vreg_cam_2p8>;
++		dovdd-supply = <&vreg_cam_1p8>;
++
++		port {
++			ov02c10_ep: endpoint {
++				data-lanes = <1 2>;
++				link-frequencies = /bits/ 64 <333125000>;
++				remote-endpoint = <&camss_csiphy0_inep>;
++			};
++		};
++	};
++};
++
+ &gpu {
+ 	status = "okay";
+ 
+@@ -867,6 +955,12 @@
+ 
+ 		wakeup-source;
+ 	};
++
++	/* ENE KB9058 EC; battery state through its mailbox */
++	embedded-controller@64 {
++		compatible = "samsung,galaxybook-battery";
++		reg = <0x64>;
++	};
+ };
+ 
+ &i2c5 {
+@@ -1120,28 +1214,26 @@
+ 	pinctrl-0 = <&wsa_swr_active>, <&spkr_01_sd_n_active>;
+ 	pinctrl-names = "default";
+ 
+-	/* WSA8845, Left Woofer */
+-	left_woofer: speaker@0,0 {
+-		compatible = "sdw20217020400";
+-		reg = <0 0>;
++	/* WSA8835, Left Tweeter */
++	left_tweeter: speaker@0,1 {
++		compatible = "sdw10217020200";
++		reg = <0 1>;
+ 		reset-gpios = <&lpass_tlmm 12 GPIO_ACTIVE_LOW>;
+ 		#sound-dai-cells = <0>;
+-		sound-name-prefix = "WooferLeft";
+-		vdd-1p8-supply = <&vreg_l15b_1p8>;
+-		vdd-io-supply = <&vreg_l12b_1p2>;
+-		qcom,port-mapping = <1 2 3 7 10 13>;
++		sound-name-prefix = "TweeterLeft";
++		vdd-supply = <&vreg_l15b_1p8>;
++		qcom,port-mapping = <1 2 3 10>;
+ 	};
+ 
+-	/* WSA8845, Left Tweeter */
+-	left_tweeter: speaker@0,1 {
+-		compatible = "sdw20217020400";
+-		reg = <0 1>;
++	/* WSA8835, Right Tweeter */
++	right_tweeter: speaker@0,2 {
++		compatible = "sdw10217020200";
++		reg = <0 2>;
+ 		reset-gpios = <&lpass_tlmm 12 GPIO_ACTIVE_LOW>;
+ 		#sound-dai-cells = <0>;
+-		sound-name-prefix = "TweeterLeft";
+-		vdd-1p8-supply = <&vreg_l15b_1p8>;
+-		vdd-io-supply = <&vreg_l12b_1p2>;
+-		qcom,port-mapping = <4 5 6 7 11 13>;
++		sound-name-prefix = "TweeterRight";
++		vdd-supply = <&vreg_l15b_1p8>;
++		qcom,port-mapping = <4 5 6 11>;
+ 	};
+ };
+ 
+@@ -1173,28 +1265,26 @@
+ 	pinctrl-0 = <&wsa2_swr_active>, <&spkr_23_sd_n_active>;
+ 	pinctrl-names = "default";
+ 
+-	/* WSA8845, Right Woofer */
+-	right_woofer: speaker@0,0 {
+-		compatible = "sdw20217020400";
+-		reg = <0 0>;
++	/* WSA8835, Left Woofer */
++	left_woofer: speaker@0,1 {
++		compatible = "sdw10217020200";
++		reg = <0 1>;
+ 		reset-gpios = <&lpass_tlmm 13 GPIO_ACTIVE_LOW>;
+ 		#sound-dai-cells = <0>;
+-		sound-name-prefix = "WooferRight";
+-		vdd-1p8-supply = <&vreg_l15b_1p8>;
+-		vdd-io-supply = <&vreg_l12b_1p2>;
+-		qcom,port-mapping = <1 2 3 7 10 13>;
++		sound-name-prefix = "WooferLeft";
++		vdd-supply = <&vreg_l15b_1p8>;
++		qcom,port-mapping = <1 2 3 10>;
+ 	};
+ 
+-	/* WSA8845, Right Tweeter */
+-	right_tweeter: speaker@0,1 {
+-		compatible = "sdw20217020400";
+-		reg = <0 1>;
++	/* WSA8835, Right Woofer */
++	right_woofer: speaker@0,2 {
++		compatible = "sdw10217020200";
++		reg = <0 2>;
+ 		reset-gpios = <&lpass_tlmm 13 GPIO_ACTIVE_LOW>;
+ 		#sound-dai-cells = <0>;
+-		sound-name-prefix = "TweeterRight";
+-		vdd-1p8-supply = <&vreg_l15b_1p8>;
+-		vdd-io-supply = <&vreg_l12b_1p2>;
+-		qcom,port-mapping = <4 5 6 7 11 13>;
++		sound-name-prefix = "WooferRight";
++		vdd-supply = <&vreg_l15b_1p8>;
++		qcom,port-mapping = <4 5 6 11>;
+ 	};
+ };
+ 
+@@ -1202,6 +1292,27 @@
+ 	gpio-reserved-ranges = <35 1>, /* Unused */
+ 			       <44 4>; /* SPI (TPM) */
+ 
++	cam_avdd_en: cam-avdd-en-state {
++		pins = "gpio96";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
++	cam_dovdd_en: cam-dovdd-en-state {
++		pins = "gpio99";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
++	cam_rgb_default: cam-rgb-default-state {
++		pins = "gpio109";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
+ 	edp_reg_en: edp-reg-en-state {
+ 		pins = "gpio70";
+ 		function = "gpio";
+--- a/arch/arm64/boot/dts/qcom/x1e80100-samsung-galaxy-book4-edge-14.dts
++++ b/arch/arm64/boot/dts/qcom/x1e80100-samsung-galaxy-book4-edge-14.dts
+@@ -6,8 +6,15 @@
+ 
+ / {
+ 	model = "Samsung Galaxy Book4 Edge (14 inch)";
++	/*
++	 * "qcom,x1e80100-qcp" only gets QSEECOM (efivars) enabled: kernels
++	 * without "firmware: qcom: scm: Allow QSEECOM on the Samsung Galaxy
++	 * Book4 Edge" skip it for unlisted machines. Nothing else in the
++	 * kernel or in Omarchy matches on it. Drop it once linux-omarchy
++	 * carries that patch.
++	 */
+ 	compatible = "samsung,galaxy-book4-edge-14", "samsung,galaxy-book4-edge",
+-		     "qcom,x1e80100";
++		     "qcom,x1e80100-qcp", "qcom,x1e80100";
+ };
+ 
+ &i2c13 {

@@ -1,0 +1,77 @@
+# Samsung Galaxy Book4 Edge 14 support for Omarchy: device tree, boot and
+# initramfs settings, Wi-Fi board file, sound, keyboard, Bluetooth, fan, and the
+# sources of three out-of-tree modules, which the pacman hook builds for every
+# kernel with headers. The firmware from Windows is a separate package that
+# iso/build.sh makes from your own copy (iso/firmware.PKGBUILD).
+#
+# Build in this directory with makepkg; iso/build.sh does that for the ISO.
+pkgname=samsung-galaxy-book4-edge-14
+pkgver=2026.10.24
+pkgrel=1
+pkgdesc='Samsung Galaxy Book4 Edge 14 support for Omarchy'
+arch=(any)
+url='https://github.com/omacom/omarchy/discussions/15860'
+# GPL-2.0: the module sources; board-2.bin and the topology are linux-firmware's.
+license=(GPL-2.0-only LicenseRef-linux-firmware)
+depends=(bluez-utils i2c-tools gcc make)
+optdepends=('linux-omarchy-headers: build the battery, camera and speaker modules')
+backup=(etc/limine-entry-tool.d/samsung-galaxy-book4-edge-14.conf
+        etc/mkinitcpio.conf.d/samsung-galaxy-book4-edge-14.conf)
+install=samsung-galaxy-book4-edge-14.install
+# The device tree and firmware files must go in as they are.
+options=(!strip !debug)
+
+package() {
+  cd "$startdir"
+  local lib=usr/lib/samsung-galaxy-book4-edge
+
+  # Boot: the tree (in DeviceTreeAuto's directory), the CHIDs that make the UKI
+  # pick it, the kernel command line and the initramfs settings.
+  install -Dm644 -t "$pkgdir/boot/dtbs/linux-omarchy/qcom" x1e80100-samsung-galaxy-book4-edge-14.dtb
+  install -Dm644 -t "$pkgdir/usr/lib/systemd/boot/hwids/aa64" x1e80100-samsung-galaxy-book4-edge-14.json
+  install -Dm644 -t "$pkgdir/etc/limine-entry-tool.d" samsung-galaxy-book4-edge-14.conf
+  install -Dm644 samsung-galaxy-book4-edge-14-mkinitcpio.conf \
+    "$pkgdir/etc/mkinitcpio.conf.d/samsung-galaxy-book4-edge-14.conf"
+  install -Dm644 samsung-galaxy-book4-edge-14-initcpio-install \
+    "$pkgdir/usr/lib/initcpio/install/samsung-galaxy-book4-edge-14"
+  install -Dm644 samsung-galaxy-book4-edge-modprobe.conf \
+    "$pkgdir/usr/lib/modprobe.d/samsung-galaxy-book4-edge-14.conf"
+
+  # Wi-Fi board file and sound topology, under updates/ so they come first.
+  install -Dm644 -t "$pkgdir/usr/lib/firmware/updates/ath12k/WCN7850/hw2.0" board-2.bin
+  install -Dm644 -t "$pkgdir/usr/lib/firmware/updates/qcom/x1e80100" X1E80100-GalaxyBook4Edge-tplg.bin
+
+  # Sound: the four-speaker UCM profile, linked under the card's long name, and
+  # the simple upmix so the woofers get centred sound.
+  install -Dm644 -t "$pkgdir/usr/share/alsa/ucm2/Samsung/GalaxyBook4Edge" ucm/GalaxyBook4Edge/*.conf
+  install -d "$pkgdir/usr/share/alsa/ucm2/conf.d/x1e80100"
+  ln -s ../../Samsung/GalaxyBook4Edge/GalaxyBook4Edge.conf \
+    "$pkgdir/usr/share/alsa/ucm2/conf.d/x1e80100/SAMSUNGELECTRONICSCO.LTD.-GalaxyBook4Edge-2.1-NP944XMA_MC1US.conf"
+  install -Dm644 -t "$pkgdir/usr/share/pipewire/client.conf.d" 50-samsung-galaxy-book4-edge-upmix.conf
+  install -Dm644 -t "$pkgdir/usr/share/pipewire/pipewire-pulse.conf.d" 50-samsung-galaxy-book4-edge-upmix.conf
+
+  # Keyboard tags, speaker amps kept awake, Bluetooth address service trigger.
+  install -Dm644 -t "$pkgdir/usr/lib/udev/rules.d" \
+    61-samsung-galaxy-book4-edge-keyboard.rules \
+    62-samsung-galaxy-book4-edge-wsa883x.rules \
+    63-samsung-galaxy-book4-edge-bluetooth.rules
+
+  # Bluetooth address and fan services; the fan one is always enabled.
+  install -Dm755 samsung-galaxy-book4-edge-bdaddr "$pkgdir/$lib/bdaddr"
+  install -Dm755 samsung-galaxy-book4-edge-fan "$pkgdir/$lib/fan"
+  install -Dm644 -t "$pkgdir/usr/lib/systemd/system" \
+    samsung-galaxy-book4-edge-bdaddr@.service samsung-galaxy-book4-edge-fan.service
+  install -d "$pkgdir/usr/lib/systemd/system/multi-user.target.wants"
+  ln -s ../samsung-galaxy-book4-edge-fan.service \
+    "$pkgdir/usr/lib/systemd/system/multi-user.target.wants/samsung-galaxy-book4-edge-fan.service"
+
+  # Out-of-tree modules: sources, the build script and the hook that runs it
+  # when this package or a kernel's headers are installed or upgraded.
+  local src
+  for src in samsung-galaxybook-battery ov02c10-gb4e snd-soc-x1e80100-gb4e; do
+    install -d "$pkgdir/usr/src/$src"
+    cp -r --no-preserve=ownership "$src"/. "$pkgdir/usr/src/$src/"
+  done
+  install -Dm755 samsung-galaxy-book4-edge-modules-build "$pkgdir/$lib/build-modules"
+  install -Dm644 -t "$pkgdir/usr/share/libalpm/hooks" 90-samsung-galaxy-book4-edge-modules.hook
+}

@@ -1,0 +1,44 @@
+#!/bin/bash
+# The EC never starts the fan on its own (it stays off with the CPU at 95°C);
+# on Windows the fan speed comes from the OS. Set it from the hottest CPU
+# thermal zone with EC2.sys's IOCTL_SET_FANRPM2 frame: [0x17, rpm as a
+# big-endian u32] to the EC's 0x62 port on i2c-3 (GENI b94000). The EC keeps
+# the target until the next write; 0 stops the fan. Above ~9000 rpm the fan
+# is no faster.
+set -u
+bus=3
+addr=0x62
+# Trip points in °C and fan speeds; a step is left 5 °C below its trip.
+trips=(60 70 80 88)
+rpms=(0 3000 4500 6000 8000)
+hyst=5
+
+set_rpm() {
+  local h
+  printf -v h '%08x' "$1"
+  i2ctransfer -f -y $bus w5@$addr 0x17 0x${h:0:2} 0x${h:2:2} 0x${h:4:2} 0x${h:6:2}
+}
+
+cpu_temp() {
+  local z t max=0
+  for z in /sys/class/thermal/thermal_zone*; do
+    [[ $(<"$z/type") == cpu* ]] || continue
+    t=$(<"$z/temp")
+    ((t > max)) && max=$t
+  done
+  echo $((max / 1000))
+}
+
+trap 'set_rpm 0; exit 0' TERM INT
+step=0 last=-1 since=0
+while :; do
+  t=$(cpu_temp)
+  while ((step < ${#trips[@]} && t >= trips[step])); do ((step++)); done
+  while ((step > 0 && t < trips[step - 1] - hyst)); do ((step--)); done
+  # Write on a change, and every 30 s in case the EC was reset (suspend).
+  if ((step != last || SECONDS - since >= 30)); then
+    ((step != last)) && echo "$t °C: ${rpms[step]} rpm"
+    set_rpm ${rpms[step]} && last=$step since=$SECONDS
+  fi
+  sleep 2
+done

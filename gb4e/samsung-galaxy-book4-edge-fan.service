@@ -1,0 +1,11 @@
+[Unit]
+Description=Fan control for the Samsung Galaxy Book4 Edge
+# It writes to the EC over I2C; never do that on another machine.
+ConditionFirmware=device-tree-compatible(samsung,galaxy-book4-edge-14)
+
+[Service]
+ExecStart=/usr/lib/samsung-galaxy-book4-edge/fan
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

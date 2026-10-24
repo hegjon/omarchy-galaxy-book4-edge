@@ -1,0 +1,32 @@
+#!/bin/bash
+# Build the Samsung Galaxy Book4 Edge out-of-tree modules (EC battery,
+# ov02c10 with 26 MHz clock support, and the X1E80100 machine driver with
+# WSA883x speaker volume caps) for every installed kernel that has headers,
+# into /usr/lib/modules/<kver>/updates. Run by the pacman hook whenever this
+# package or a kernel's headers are installed or upgraded.
+set -u
+rc=0
+for build in /usr/lib/modules/*/build; do
+  [[ -f $build/Makefile ]] || continue
+  kver=$(basename "$(dirname "$build")")
+  for src in /usr/src/samsung-galaxybook-battery /usr/src/ov02c10-gb4e \
+             /usr/src/snd-soc-x1e80100-gb4e; do
+    [[ -d $src ]] || continue
+    mod=$(sed -n 's/^obj-m *:= *\(.*\)\.o$/\1/p' "$src"/Makefile)
+    dst=/usr/lib/modules/$kver/updates/$mod.ko
+    newest=$(find "$src" -type f -newer "$dst" -print -quit 2>/dev/null)
+    [[ -f $dst && -z $newest && $dst -nt $build/Makefile ]] && continue
+    tmp=$(mktemp -d)
+    cp -r "$src"/. "$tmp"/
+    if make -s -C "$build" M="$tmp" modules >/dev/null; then
+      install -D -m 0644 "$tmp"/$mod.ko "$dst"
+      depmod "$kver"
+      echo "$mod: built for $kver"
+    else
+      echo "$mod: build failed for $kver" >&2
+      rc=1
+    fi
+    rm -rf "$tmp"
+  done
+done
+exit $rc
