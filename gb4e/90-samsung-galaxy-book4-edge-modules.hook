@@ -6,6 +6,7 @@ Target = usr/lib/modules/*/build/Makefile
 Target = usr/src/samsung-galaxybook-battery/*
 Target = usr/src/ov02c10-gb4e/*
 Target = usr/src/snd-soc-x1e80100-gb4e/*
+Target = usr/src/gb4e-typec/*
 Target = usr/src/samsung-galaxy-book4-edge-usbc/*
 
 [Action]

@@ -1,7 +1,8 @@
 #!/bin/bash
 # Build the Samsung Galaxy Book4 Edge out-of-tree modules (EC battery,
-# ov02c10 with 26 MHz clock support, and the X1E80100 machine driver with
-# WSA883x speaker volume caps) for every installed kernel that has headers,
+# ov02c10 with 26 MHz clock support, the X1E80100 machine driver with WSA883x
+# speaker volume caps, and gb4e_typec for the USB-C retimers) for every
+# installed kernel that has headers,
 # into /usr/lib/modules/<kver>/updates, and the USB-C service. Run by the
 # pacman hook whenever this package or a kernel's headers are installed or
 # upgraded.
@@ -11,7 +12,7 @@ for build in /usr/lib/modules/*/build; do
   [[ -f $build/Makefile ]] || continue
   kver=$(basename "$(dirname "$build")")
   for src in /usr/src/samsung-galaxybook-battery /usr/src/ov02c10-gb4e \
-             /usr/src/snd-soc-x1e80100-gb4e; do
+             /usr/src/snd-soc-x1e80100-gb4e /usr/src/gb4e-typec; do
     [[ -d $src ]] || continue
     mod=$(sed -n 's/^obj-m *:= *\(.*\)\.o$/\1/p' "$src"/Makefile)
     dst=/usr/lib/modules/$kver/updates/$mod.ko

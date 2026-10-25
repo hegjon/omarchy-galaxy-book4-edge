@@ -23,7 +23,8 @@ Upstream discussion: https://github.com/omacom/omarchy/discussions/15860
 | Battery | Works | EC driver from Saddytech/Galaxy-Book4-Edge-linux |
 | Fan | Works | The EC never starts it; a service sets the speed from the CPU temperature |
 | USB-C hotplug: devices and charging | Works | A service drives the ports' Samsung S2MM006 PD controllers as Windows does: VBUS on and off, charger input on, 20 V |
-| USB SuperSpeed, DP alt mode | Missing | Nothing sets the PHY's orientation and mode without a Type-C driver; USB runs at 480 Mbit/s |
+| USB SuperSpeed (5 Gbit/s), both plug orientations | Works | The PS8830 retimers added to the device tree; `gb4e_typec` sets their orientation, read from the PD controller |
+| DP alt mode | Missing | |
 | Headphones, headset mic, DP audio, suspend | Untested | |
 
 ## Layout
@@ -34,7 +35,7 @@ Upstream discussion: https://github.com/omacom/omarchy/discussions/15860
 | File | Installed as | Purpose |
 | --- | --- | --- |
 | `x1e80100-samsung-galaxy-book4-edge-14.dtb` | `/boot/dtbs/linux-omarchy/qcom/` | Device tree: v8 series plus the changes in `samsung-galaxy-book4-edge-dtsi.patch` |
-| `samsung-galaxy-book4-edge-dtsi.patch` | (not installed) | DT changes against Linux 7.3 + v8: WSA883x speakers, EC, camera, QSEECOM compatible, the I2C buses of the USB-C PD controllers and the charger |
+| `samsung-galaxy-book4-edge-dtsi.patch` | (not installed) | DT changes against Linux 7.3 + v8: WSA883x speakers, EC, camera, QSEECOM compatible, the I2C buses of the USB-C PD controllers and the charger, the PS8830 retimers and their supplies, the (absent) SBU muxes disabled |
 | `x1e80100-samsung-galaxy-book4-edge-14.json` | `/usr/lib/systemd/boot/hwids/aa64/` | CHIDs, so the UKI's DeviceTreeAuto picks this tree |
 | `samsung-galaxy-book4-edge-14.conf` | `/etc/limine-entry-tool.d/` | Adds `usbcore.autosuspend=-1` (usbcore is built in, so the modprobe option never applies) |
 | `samsung-galaxy-book4-edge-14-initcpio-install`, `-mkinitcpio.conf` | `/usr/lib/initcpio/install/`, `/etc/mkinitcpio.conf.d/` | Keyboard modules in the initramfs; msm blacklisted there only |
@@ -44,7 +45,8 @@ Upstream discussion: https://github.com/omacom/omarchy/discussions/15860
 | `61-…-keyboard.rules`, `62-…-wsa883x.rules`, `63-…-bluetooth.rules` | `/usr/lib/udev/rules.d/` | Keyboard tags, speaker amp runtime PM off, Bluetooth address service trigger |
 | `samsung-galaxy-book4-edge-bdaddr`, `…@.service` | `/usr/lib/samsung-galaxy-book4-edge/bdaddr`, `/usr/lib/systemd/system/` | Sets the Bluetooth public address |
 | `samsung-galaxy-book4-edge-fan`, `….service` | `/usr/lib/samsung-galaxy-book4-edge/fan`, `/usr/lib/systemd/system/` | Fan curve: 3000/4500/6000/8000 rpm at 60/70/80/88 °C; always enabled |
-| `samsung-galaxy-book4-edge-usbc/`, `….service` | `/usr/src/`, built into `/usr/lib/samsung-galaxy-book4-edge/usbc` | USB-C power roles (C, libc only); always enabled |
+| `samsung-galaxy-book4-edge-usbc/`, `….service` | `/usr/src/`, built into `/usr/lib/samsung-galaxy-book4-edge/usbc` | USB-C power roles and plug orientation (C, libc only); always enabled |
+| `gb4e-typec/`, `…-modules-load.conf` | `/usr/src/`, `/usr/lib/modules-load.d/` | Kernel module that lets `usbc` set each retimer's orientation and USB mode (`/sys/devices/platform/gb4e-typec/port0`, `port1`) |
 | `samsung-galaxybook-battery/`, `ov02c10-gb4e/`, `snd-soc-x1e80100-gb4e/` | `/usr/src/` | Out-of-tree modules: EC battery, ov02c10 with 26 MHz, x1e80100 with WSA883x volume caps |
 | `samsung-galaxy-book4-edge-modules-build`, `90-…-modules.hook` | `/usr/lib/samsung-galaxy-book4-edge/build-modules`, `/usr/share/libalpm/hooks/` | Builds those modules into `updates/` and the USB-C service, when the package or a kernel's headers are installed or upgraded |
 | `samsung-galaxy-book4-edge-modprobe.conf` | `/usr/lib/modprobe.d/` | Blacklists `qcom_battmgr` (it has no data on this machine) |
@@ -135,7 +137,7 @@ machine without this repository:
 | Speaker volume | linux-omarchy | `x1e80100-gb4e-volume.patch`: PA 17 and digital 84 (0 dB) on this board |
 | Camera clock | linux-omarchy | `ov02c10-26mhz.patch`: a 26 MHz input clock with Windows' PLL values |
 | Battery | linux-omarchy | An EC battery driver; Saddytech's is out of tree |
-| USB-C ports | linux-omarchy | A Type-C driver for the S2MM006 PD controllers, which would also set the PHY orientation for SuperSpeed and DP; until then the `usbc` service |
+| USB-C ports | linux-omarchy | The PS8830 retimer nodes, and a Type-C driver for the S2MM006 PD controllers that sets their orientation and mode (for DP too); until then the `usbc` service and `gb4e_typec` |
 | Live ISO boot | omarchy-iso | This dtb and `x1e80100-samsung-galaxy-book4-edge-14.json` in the live UKI, so DeviceTreeAuto picks the tree and GRUB needn't (untested) |
 | Wi-Fi board data | linux-firmware | A `board-2.bin` entry for 17cb:1107, board-id 255 (`wifi/ath12k_bd.py`) |
 | Sound topology and UCM | linux-firmware, alsa-ucm-conf | `X1E80100-GalaxyBook4Edge-tplg.bin` (the CRD topology) and `gb4e/ucm/` |
@@ -181,6 +183,15 @@ machine without this repository:
   switches off), the three values `EmuEc.sys` writes; without the last, VBUS
   stays on after a device is unplugged. The contract stays at 5 V until the host
   sends a Request. `gb4e/samsung-galaxy-book4-edge-usbc/usbc.c` has the details.
+- SuperSpeed runs through a Parade PS8830 retimer per port, which the v8 tree
+  leaves out. ACPI `UCS0` lists the same retimer pins as the CRD and the Yoga
+  Slim 7x (`&i2c3`/`&i2c7` at 0x08; port 0 on PMIC GPIOs, port 1 on TLMM 175,
+  176, 186, 188). The retimer needs the plug orientation, which the S2MM006
+  shows in register `0x12` bits 0-1 (1 normal, 2 reverse) while a device waits
+  for VBUS; GPIOs 121/123 don't change with it.
+- The v8 tree's SBU muxes (TLMM 167/168, 178/179) aren't on this board: `UCS0`
+  only has placeholder pins there, and GPIO 167 is an interrupt input of ACPI
+  `SSPN`.
 - `x1e80100.c` caps PA Volume at 6, which is 0 dB on WSA884x but −3 dB on
   WSA883x (17 is 0 dB there).
 - The hwids JSON has seven CHIDs (types 0, 1, 2, 3, 6, 8/10, 13). Types 0–2
@@ -198,12 +209,11 @@ machine without this repository:
 
 ## Open problems
 
-- **USB SuperSpeed and DP alt mode.** Power roles work through the `usbc`
-  service, but nothing sets the QMP PHY's orientation and mode, so USB runs at
-  480 Mbit/s and there is no DisplayPort over USB-C. That needs a Type-C driver
-  for the S2MM006 (orientation from GPIO 121/123, as the v8 tree describes).
-  The service also polls every 0.15 s; the controllers' interrupt GPIOs
-  (ACPI `EMEC` lists four) would avoid that.
+- **DP alt mode.** The retimers and the QMP PHY can carry DisplayPort, but
+  nothing negotiates the DP alternate mode with the PD controller. A proper
+  Type-C driver for the S2MM006 would do that, and replace the `usbc` service
+  and `gb4e_typec`. The service also polls every 0.15 s; the controllers'
+  interrupt GPIOs (ACPI `EMEC` lists four) would avoid that.
 - **Performance modes and fan speed.** Samsung's Quiet/Optimized/Performance
   modes go through an EC command (`CMDD(0xEE, [0x80, mode])`) that isn't
   decoded, and no tachometer reading has been found.

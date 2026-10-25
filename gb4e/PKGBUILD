@@ -8,7 +8,7 @@
 # Build in this directory with makepkg; iso/build.sh does that for the ISO.
 pkgname=samsung-galaxy-book4-edge-14
 pkgver=2026.10.24
-pkgrel=3
+pkgrel=4
 pkgdesc='Samsung Galaxy Book4 Edge 14 support for Omarchy'
 arch=(any)
 url='https://github.com/hegjon/omarchy-galaxy-book4-edge'
@@ -37,6 +37,9 @@ package() {
     "$pkgdir/usr/lib/initcpio/install/samsung-galaxy-book4-edge-14"
   install -Dm644 samsung-galaxy-book4-edge-modprobe.conf \
     "$pkgdir/usr/lib/modprobe.d/samsung-galaxy-book4-edge-14.conf"
+  # gb4e_typec binds to no device of its own, so load it at boot.
+  install -Dm644 samsung-galaxy-book4-edge-modules-load.conf \
+    "$pkgdir/usr/lib/modules-load.d/samsung-galaxy-book4-edge-14.conf"
 
   # Wi-Fi board file and sound topology, under updates/ so they come first.
   install -Dm644 -t "$pkgdir/usr/lib/firmware/updates/ath12k/WCN7850/hw2.0" board-2.bin
@@ -73,7 +76,7 @@ package() {
   # when this package or a kernel's headers are installed or upgraded.
   local src
   for src in samsung-galaxybook-battery ov02c10-gb4e snd-soc-x1e80100-gb4e \
-             samsung-galaxy-book4-edge-usbc; do
+             gb4e-typec samsung-galaxy-book4-edge-usbc; do
     install -d "$pkgdir/usr/src/$src"
     cp -r --no-preserve=ownership "$src"/. "$pkgdir/usr/src/$src/"
   done

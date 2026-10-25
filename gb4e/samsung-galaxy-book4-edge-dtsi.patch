@@ -1,5 +1,23 @@
 --- a/arch/arm64/boot/dts/qcom/x1-samsung-galaxy-book4-edge.dtsi
 +++ b/arch/arm64/boot/dts/qcom/x1-samsung-galaxy-book4-edge.dtsi
+@@ -139,7 +139,7 @@
+ 					reg = <1>;
+ 
+ 					pmic_glink_ss0_ss_in: endpoint {
+-						remote-endpoint = <&usb_1_ss0_qmpphy_out>;
++						remote-endpoint = <&retimer_ss0_ss_out>;
+ 					};
+ 				};
+ 
+@@ -176,7 +176,7 @@
+ 					reg = <1>;
+ 
+ 					pmic_glink_ss1_ss_in: endpoint {
+-						remote-endpoint = <&usb_1_ss1_qmpphy_out>;
++						remote-endpoint = <&retimer_ss1_ss_out>;
+ 					};
+ 				};
+ 
 @@ -203,10 +203,10 @@
  	sound {
  		compatible = "qcom,x1e80100-sndcard";
@@ -73,7 +91,140 @@
  	vreg_octa_vdd: regulator-octa-vdd {
  		compatible = "regulator-fixed";
  
-@@ -842,6 +881,55 @@
+@@ -365,6 +404,106 @@
+ 		regulator-always-on;
+ 	};
+ 
++	/*
++	 * USB-C retimer supplies. ACPI UCS0 lists the same enable and reset pins as
++	 * the CRD and the Yoga Slim 7x for their ports 0 and 1.
++	 */
++	vreg_rtmr0_1p15: regulator-rtmr0-1p15 {
++		compatible = "regulator-fixed";
++
++		regulator-name = "VREG_RTMR0_1P15";
++		regulator-min-microvolt = <1150000>;
++		regulator-max-microvolt = <1150000>;
++
++		gpio = <&pmc8380_5_gpios 8 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++
++		pinctrl-0 = <&usb0_pwr_1p15_reg_en>;
++		pinctrl-names = "default";
++
++		regulator-boot-on;
++	};
++
++	vreg_rtmr0_1p8: regulator-rtmr0-1p8 {
++		compatible = "regulator-fixed";
++
++		regulator-name = "VREG_RTMR0_1P8";
++		regulator-min-microvolt = <1800000>;
++		regulator-max-microvolt = <1800000>;
++
++		gpio = <&pm8550ve_9_gpios 8 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++
++		pinctrl-0 = <&usb0_1p8_reg_en>;
++		pinctrl-names = "default";
++
++		regulator-boot-on;
++	};
++
++	vreg_rtmr0_3p3: regulator-rtmr0-3p3 {
++		compatible = "regulator-fixed";
++
++		regulator-name = "VREG_RTMR0_3P3";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++
++		gpio = <&pm8550_gpios 11 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++
++		pinctrl-0 = <&usb0_3p3_reg_en>;
++		pinctrl-names = "default";
++
++		regulator-boot-on;
++	};
++
++	vreg_rtmr1_1p15: regulator-rtmr1-1p15 {
++		compatible = "regulator-fixed";
++
++		regulator-name = "VREG_RTMR1_1P15";
++		regulator-min-microvolt = <1150000>;
++		regulator-max-microvolt = <1150000>;
++
++		gpio = <&tlmm 188 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++
++		pinctrl-0 = <&usb1_pwr_1p15_reg_en>;
++		pinctrl-names = "default";
++
++		regulator-boot-on;
++	};
++
++	vreg_rtmr1_1p8: regulator-rtmr1-1p8 {
++		compatible = "regulator-fixed";
++
++		regulator-name = "VREG_RTMR1_1P8";
++		regulator-min-microvolt = <1800000>;
++		regulator-max-microvolt = <1800000>;
++
++		gpio = <&tlmm 175 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++
++		pinctrl-0 = <&usb1_pwr_1p8_reg_en>;
++		pinctrl-names = "default";
++
++		regulator-boot-on;
++	};
++
++	vreg_rtmr1_3p3: regulator-rtmr1-3p3 {
++		compatible = "regulator-fixed";
++
++		regulator-name = "VREG_RTMR1_3P3";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++
++		gpio = <&tlmm 186 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++
++		pinctrl-0 = <&usb1_pwr_3p3_reg_en>;
++		pinctrl-names = "default";
++
++		regulator-boot-on;
++	};
++
+ 	vph_pwr: regulator-vph-pwr {
+ 		compatible = "regulator-fixed";
+ 
+@@ -396,6 +535,12 @@
+ 	usb-1-ss0-sbu-mux {
+ 		compatible = "onnn,fsusb42", "gpio-sbu-mux";
+ 
++		/*
++		 * Not on this board: ACPI UCS0 lists no SBU mux pins (only GPIO 237
++		 * as a placeholder), and GPIO 167 is an interrupt input of ACPI SSPN.
++		 */
++		status = "disabled";
++
+ 		enable-gpios = <&tlmm 168 GPIO_ACTIVE_LOW>;
+ 		select-gpios = <&tlmm 167 GPIO_ACTIVE_HIGH>;
+ 
+@@ -415,6 +560,12 @@
+ 	usb-1-ss1-sbu-mux {
+ 		compatible = "onnn,fsusb42", "gpio-sbu-mux";
+ 
++		/*
++		 * Not on this board: ACPI UCS0 lists no SBU mux pins (only GPIO 237
++		 * as a placeholder), and GPIO 167 is an interrupt input of ACPI SSPN.
++		 */
++		status = "disabled";
++
+ 		enable-gpios = <&tlmm 179 GPIO_ACTIVE_LOW>;
+ 		select-gpios = <&tlmm 178 GPIO_ACTIVE_HIGH>;
+ 
+@@ -842,6 +993,55 @@
  	status = "okay";
  };
  
@@ -129,7 +280,7 @@
  &gpu {
  	status = "okay";
  
-@@ -867,6 +955,12 @@
+@@ -867,6 +1067,62 @@
  
  		wakeup-source;
  	};
@@ -139,10 +290,117 @@
 +		compatible = "samsung,galaxybook-battery";
 +		reg = <0x64>;
 +	};
++};
++
++/* USB-C port 0 retimer (ACPI UCS0, I2C4) */
++&i2c3 {
++	clock-frequency = <400000>;
++
++	status = "okay";
++
++	typec-mux@8 {
++		compatible = "parade,ps8830";
++		reg = <0x08>;
++
++		clocks = <&rpmhcc RPMH_RF_CLK3>;
++
++		vdd-supply = <&vreg_rtmr0_1p15>;
++		vdd33-supply = <&vreg_rtmr0_3p3>;
++		vdd33-cap-supply = <&vreg_rtmr0_3p3>;
++		vddar-supply = <&vreg_rtmr0_1p15>;
++		vddat-supply = <&vreg_rtmr0_1p15>;
++		vddio-supply = <&vreg_rtmr0_1p8>;
++
++		reset-gpios = <&pm8550_gpios 10 GPIO_ACTIVE_LOW>;
++
++		pinctrl-0 = <&rtmr0_default>;
++		pinctrl-names = "default";
++
++		retimer-switch;
++		orientation-switch;
++
++		ports {
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			port@0 {
++				reg = <0>;
++
++				retimer_ss0_ss_out: endpoint {
++					remote-endpoint = <&pmic_glink_ss0_ss_in>;
++				};
++			};
++
++			port@1 {
++				reg = <1>;
++
++				retimer_ss0_ss_in: endpoint {
++					remote-endpoint = <&usb_1_ss0_qmpphy_out>;
++				};
++			};
++		};
++	};
  };
  
  &i2c5 {
-@@ -923,12 +1017,33 @@
+@@ -904,6 +1160,56 @@
+ };
+ 
+ 
++/* USB-C port 1 retimer (ACPI UCS0, I2C8) */
++&i2c7 {
++	clock-frequency = <400000>;
++
++	status = "okay";
++
++	typec-mux@8 {
++		compatible = "parade,ps8830";
++		reg = <0x08>;
++
++		clocks = <&rpmhcc RPMH_RF_CLK4>;
++
++		vdd-supply = <&vreg_rtmr1_1p15>;
++		vdd33-supply = <&vreg_rtmr1_3p3>;
++		vdd33-cap-supply = <&vreg_rtmr1_3p3>;
++		vddar-supply = <&vreg_rtmr1_1p15>;
++		vddat-supply = <&vreg_rtmr1_1p15>;
++		vddio-supply = <&vreg_rtmr1_1p8>;
++
++		reset-gpios = <&tlmm 176 GPIO_ACTIVE_LOW>;
++
++		pinctrl-0 = <&rtmr1_default>;
++		pinctrl-names = "default";
++
++		retimer-switch;
++		orientation-switch;
++
++		ports {
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			port@0 {
++				reg = <0>;
++
++				retimer_ss1_ss_out: endpoint {
++					remote-endpoint = <&pmic_glink_ss1_ss_in>;
++				};
++			};
++
++			port@1 {
++				reg = <1>;
++
++				retimer_ss1_ss_in: endpoint {
++					remote-endpoint = <&usb_1_ss1_qmpphy_out>;
++				};
++			};
++		};
++	};
++};
++
+ &i2c8 {
+ 	clock-frequency = <400000>;
+ 
+@@ -923,12 +1229,33 @@
  	};
  };
  
@@ -176,7 +434,70 @@
  &lpass_tlmm {
  	spkr_01_sd_n_active: spkr-01-sd-n-active-state {
  		pins = "gpio12";
-@@ -1120,28 +1235,26 @@
+@@ -1065,6 +1392,26 @@
+ 	};
+ };
+ 
++&pm8550_gpios {
++	rtmr0_default: rtmr0-reset-n-active-state {
++		pins = "gpio10";
++		function = "normal";
++		power-source = <1>; /* 1.8V */
++		bias-disable;
++		input-disable;
++		output-enable;
++	};
++
++	usb0_3p3_reg_en: usb0-3p3-reg-en-state {
++		pins = "gpio11";
++		function = "normal";
++		power-source = <1>; /* 1.8V */
++		bias-disable;
++		input-disable;
++		output-enable;
++	};
++};
++
+ &pm8550ve_8_gpios {
+ 	misc_3p3_reg_en: misc-3p3-reg-en-state {
+ 		pins = "gpio6";
+@@ -1078,6 +1425,17 @@
+ 	};
+ };
+ 
++&pm8550ve_9_gpios {
++	usb0_1p8_reg_en: usb0-1p8-reg-en-state {
++		pins = "gpio8";
++		function = "normal";
++		power-source = <1>; /* 1.8V */
++		bias-disable;
++		input-disable;
++		output-enable;
++	};
++};
++
+ &pmc8380_3_gpios {
+ 	edp_bl_en: edp-bl-en-state {
+ 		pins = "gpio4";
+@@ -1088,6 +1446,17 @@
+ 	};
+ };
+ 
++&pmc8380_5_gpios {
++	usb0_pwr_1p15_reg_en: usb0-pwr-1p15-reg-en-state {
++		pins = "gpio8";
++		function = "normal";
++		power-source = <1>; /* 1.8V */
++		bias-disable;
++		input-disable;
++		output-enable;
++	};
++};
++
+ &qupv3_0 {
+ 	status = "okay";
+ };
+@@ -1120,28 +1489,26 @@
  	pinctrl-0 = <&wsa_swr_active>, <&spkr_01_sd_n_active>;
  	pinctrl-names = "default";
  
@@ -219,7 +540,7 @@
  	};
  };
  
-@@ -1173,28 +1286,26 @@
+@@ -1173,28 +1540,26 @@
  	pinctrl-0 = <&wsa2_swr_active>, <&spkr_23_sd_n_active>;
  	pinctrl-names = "default";
  
@@ -262,7 +583,7 @@
  	};
  };
  
-@@ -1202,6 +1313,27 @@
+@@ -1202,6 +1567,27 @@
  	gpio-reserved-ranges = <35 1>, /* Unused */
  			       <44 4>; /* SPI (TPM) */
  
@@ -290,6 +611,66 @@
  	edp_reg_en: edp-reg-en-state {
  		pins = "gpio70";
  		function = "gpio";
+@@ -1292,6 +1678,13 @@
+ 		};
+ 	};
+ 
++	rtmr1_default: rtmr1-reset-n-active-state {
++		pins = "gpio176";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
+ 	tpad_default: tpad-default-state {
+ 		pins = "gpio3";
+ 		function = "gpio";
+@@ -1353,6 +1746,27 @@
+ 		};
+ 	};
+ 
++	usb1_pwr_1p15_reg_en: usb1-pwr-1p15-reg-en-state {
++		pins = "gpio188";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
++	usb1_pwr_1p8_reg_en: usb1-pwr-1p8-reg-en-state {
++		pins = "gpio175";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
++	usb1_pwr_3p3_reg_en: usb1-pwr-3p3-reg-en-state {
++		pins = "gpio186";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
+ 	wcn_sw_en: wcn-sw-en-state {
+ 		pins = "gpio214";
+ 		function = "gpio";
+@@ -1443,7 +1857,7 @@
+ };
+ 
+ &usb_1_ss0_qmpphy_out {
+-	remote-endpoint = <&pmic_glink_ss0_ss_in>;
++	remote-endpoint = <&retimer_ss0_ss_in>;
+ };
+ 
+ &usb_1_ss1 {
+@@ -1473,7 +1887,7 @@
+ };
+ 
+ &usb_1_ss1_qmpphy_out {
+-	remote-endpoint = <&pmic_glink_ss1_ss_in>;
++	remote-endpoint = <&retimer_ss1_ss_in>;
+ };
+ 
+ &usb_1_ss2_qmpphy {
 --- a/arch/arm64/boot/dts/qcom/x1e80100-samsung-galaxy-book4-edge-14.dts
 +++ b/arch/arm64/boot/dts/qcom/x1e80100-samsung-galaxy-book4-edge-14.dts
 @@ -6,8 +6,15 @@

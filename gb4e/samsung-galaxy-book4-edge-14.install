@@ -4,7 +4,7 @@ post_remove() {
   local dir
   rm -f /usr/lib/samsung-galaxy-book4-edge/usbc
   for dir in /usr/lib/modules/*/; do
-    rm -f "$dir"updates/{samsung_galaxybook_battery,ov02c10,snd-soc-x1e80100}.ko
+    rm -f "$dir"updates/{samsung_galaxybook_battery,ov02c10,snd-soc-x1e80100,gb4e_typec}.ko
     [[ -f ${dir}modules.dep ]] && depmod "$(basename "$dir")"
   done
   return 0

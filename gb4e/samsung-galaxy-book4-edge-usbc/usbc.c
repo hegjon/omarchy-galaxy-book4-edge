@@ -14,12 +14,21 @@
  *    0x12, consumer on; then ask for the highest fixed PDO up to 20 V, at
  *    most twice per attach
  *
+ * For SuperSpeed, the port's PS8830 retimer has to know the plug orientation
+ * before the device gets VBUS: it is written to the gb4e_typec module's
+ * /sys/devices/platform/gb4e-typec/portN first, and set to none on removal.
+ * Without the module, devices run at USB 2.0 speed.
+ *
  * The commands are EmuEc.sys's: its switch function writes 0x00, 0x09 or 0x12
  * to register 0x4E. Registers are 16-bit. Others used here, from
  * ciscobugger/book4-edge-linux (reports/ec/07-pdic-s2mm006.md) and tests on
- * this machine: 0x0E attach (bit 4 a sink partner, 0x10 while it waits for
- * VBUS; bits 1-3 a source partner; 0x01 alone shows up for both and is never
- * acted on; 0x05 with the provider on: the device is gone), 0x1C switches
+ * this machine: 0x11 the partner (high nibble 2: a sink, 0x2e while it waits
+ * for VBUS; 1: a source, 0x1b for a charger; EmuEc.sys's CC interrupt handler
+ * tests the same nibble), 0x0E attach (0x10 while a sink waits for VBUS, but
+ * a charger can show it too; 0x01 or 0x11 with a powered sink; 0x05 with the
+ * provider on: the device is gone), 0x12 (bits 0-1:
+ * the active CC pin, 1 normal and 2 reverse, while a partner waits; EmuEc.sys's
+ * CC interrupt handler tests the same bits), 0x1C switches
  * (bit 0 provider, 0x0a consumer closed), 0x0900 the received
  * Source_Capabilities (empty without a source), 0x0080 the message to send,
  * 0x50 bit 6 sends it, 0x06A0 the Request in force.
@@ -40,14 +49,19 @@
 #define ADDR		0x33
 #define POLL_MS		150	/* a waiting device shows 0x10 for ~0.33 s of every ~3.7 s */
 #define SETTLE		1.0	/* s after a command before acting on that port again */
-#define GONE_POLLS	3	/* polls a powered port must look empty before VBUS goes off */
+#define GONE_POLLS	2	/* polls a powered port must look empty before VBUS goes off */
 #define MAX_MV		20000	/* the charger's input limit */
 #define MAX_TX		2	/* PD transmissions per attach */
 #define TX_GAP		30.0	/* s between transmissions, any port */
+#define FRESH		1.0	/* s a partner or orientation reading stays valid */
+#define ORIENT_WAIT	5.0	/* s to wait for one before powering a device anyway */
 
 struct port {
 	int n, fd, gone, tx;
-	double cmd_t, check_t;
+	int orient;		/* 0x12 bits 0-1: 0 unknown, 1 normal, 2 reverse */
+	int orient_set;		/* what the retimer was last told */
+	double cmd_t, check_t, orient_t, wait_t;
+	double sink_t, source_t;	/* when 0x11 last showed a sink, a source */
 };
 
 static double last_tx = -TX_GAP;
@@ -115,6 +129,33 @@ static int wr(struct port *p, uint16_t reg, uint8_t val)
 	uint8_t a[3] = { reg >> 8, reg & 0xff, val };
 
 	return xfer(p, a, 3, NULL, 0);
+}
+
+/* Tell the retimer the plug orientation (1 normal, 2 reverse, 0 none). */
+static void set_orientation(struct port *p, int orient)
+{
+	static const char *const names[] = { "none", "normal", "reverse" };
+	char path[64];
+	FILE *f;
+
+	if (orient == p->orient_set)
+		return;
+	snprintf(path, sizeof(path), "/sys/devices/platform/gb4e-typec/port%d", p->n);
+	f = fopen(path, "w");
+	if (!f)
+		return;
+	if (fputs(names[orient], f) < 0 || fclose(f)) {
+		printf("port %d: setting orientation %s failed\n", p->n, names[orient]);
+		return;
+	}
+	p->orient_set = orient;
+	if (orient)
+		printf("port %d: orientation %s\n", p->n, names[orient]);
+}
+
+static int have_retimers(void)
+{
+	return access("/sys/devices/platform/gb4e-typec/port0", W_OK) == 0;
 }
 
 static void command(struct port *p, uint8_t val, const char *what, int a, int s)
@@ -229,29 +270,78 @@ static void step(struct port *p, double t)
 		if (!request(p, 0x06A0, &type, &nobj, &pos))
 			printf("port %d: contract now PDO %d\n", p->n, pos);
 	}
+	{
+		/* 0x11's high nibble says what is attached, when it says anything. */
+		int r = rd1(p, 0x11);
+
+		if (r >> 4 == 2)
+			p->sink_t = t;
+		else if (r >> 4 == 1)
+			p->source_t = t;
+	}
+	if (s == 0) {
+		/* While a partner waits, 0x12 shows which CC pin it is on. */
+		int r = rd1(p, 0x12);
+
+		if (r >= 0 && (r & 3) && (r & 3) != 3) {
+			p->orient = r & 3;
+			p->orient_t = t;
+		}
+	}
 	if (t - p->cmd_t < SETTLE)
 		return;
+	/* Nothing attached any more: put the retimer back in reset. */
+	if (a == 0 && s == 0 && p->orient_set > 0 && t - p->sink_t >= FRESH && t - p->source_t >= FRESH)
+		set_orientation(p, 0);
+	/* A charger on a port we power: VBUS off at once. */
+	if (s & 0x01 && t - p->source_t < FRESH) {
+		command(p, 0x00, "charger on a port we power, VBUS off", a, s);
+		set_orientation(p, 0);
+		return;
+	}
 	/* A device we power that is removed leaves the provider switch on. */
 	if (s & 0x01 && a != 0x01 && a != 0x11) {
 		if (++p->gone >= GONE_POLLS) {
 			command(p, 0x00, "device removed, VBUS off", a, s);
+			set_orientation(p, 0);
 			p->gone = 0;
 		}
 		return;
 	}
 	p->gone = 0;
-	if (a & 0x10 && !(a & 0x0e)) {
-		/* A sink: VBUS only with no switch closed and no source in sight. */
-		if (s == 0 && !caps(p, pdo))
-			command(p, 0x09, "device attached, VBUS on", a, s);
-	} else if (a & 0x0e && !(a & 0x10) && !(s & 0x01)) {
-		/* A source, and we are not providing. */
-		if (s != 0x0a) {
-			if (caps(p, pdo))
-				command(p, 0x12, "charger attached, input switch on", a, s);
-		} else if (p->tx < MAX_TX) {
-			upgrade(p, t);
+	if (s == 0 && t - p->source_t >= ORIENT_WAIT && !caps(p, pdo)) {
+		/*
+		 * A sink, with no switch closed and no source seen for a while. Give
+		 * it its orientation first; without one (or without the module), it
+		 * still gets VBUS after ORIENT_WAIT, at USB 2.0 speed.
+		 */
+		int sink = t - p->sink_t < FRESH;
+		int fresh = p->orient && t - p->orient_t < FRESH;
+
+		if (!sink && !(a & 0x10)) {
+			p->wait_t = 0;
+			return;
 		}
+		if (!(sink && (fresh || !have_retimers()))) {
+			if (!p->wait_t)
+				p->wait_t = t;
+			if (t - p->wait_t < ORIENT_WAIT)
+				return;
+		}
+		p->wait_t = 0;
+		set_orientation(p, sink && fresh ? p->orient : 0);
+		command(p, 0x09, "device attached, VBUS on", a, s);
+		return;
+	}
+	p->wait_t = 0;
+	if (!(s & 0x01) && t - p->source_t < FRESH && caps(p, pdo)) {
+		/* A source that sent its capabilities, and we are not providing. */
+		if (s != 0x0a) {
+			set_orientation(p, 0);
+			command(p, 0x12, "charger attached, input switch on", a, s);
+		}
+		else if (p->tx < MAX_TX)
+			upgrade(p, t);
 	}
 }
 
@@ -264,6 +354,9 @@ int main(void)
 	int i;
 
 	setvbuf(stdout, NULL, _IOLBF, 0);
+	/* With the module loaded, wait until it has found the retimers. */
+	for (i = 0; i < 100 && !access("/sys/module/gb4e_typec", F_OK) && !have_retimers(); i++)
+		nanosleep(&poll, NULL);
 	for (i = 0; i < 2; i++) {
 		int bus = bus_of(controllers[i]);
 
@@ -272,13 +365,26 @@ int main(void)
 			return 1;
 		}
 		snprintf(dev, sizeof(dev), "/dev/i2c-%d", bus);
-		ports[i] = (struct port){ .n = i, .fd = open(dev, O_RDWR), .cmd_t = -SETTLE };
+		ports[i] = (struct port){ .n = i, .fd = open(dev, O_RDWR), .cmd_t = -SETTLE,
+					  .orient_set = -1 };
 		if (ports[i].fd < 0) {
 			perror(dev);
 			return 1;
 		}
 		printf("port %d: 0x0E=0x%02x 0x1C=0x%02x\n", i, rd1(&ports[i], 0x0E),
 		       rd1(&ports[i], 0x1C));
+	}
+	/*
+	 * A port powered before we started (by UEFI, or an earlier run) may have
+	 * a device of unknown orientation, or even a charger on it: switch it off
+	 * once, so whatever is attached is detected again.
+	 */
+	for (i = 0; i < 2; i++) {
+		int a = rd1(&ports[i], 0x0E), s = rd1(&ports[i], 0x1C);
+
+		if (s >= 0 && s & 0x01)
+			command(&ports[i], 0x00, "powered at start, VBUS off to detect again", a, s);
+		set_orientation(&ports[i], 0);
 	}
 	for (;;) {
 		double t = now();
