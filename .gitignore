@@ -23,5 +23,9 @@
 /wifi/*
 !/wifi/ath12k_bd.py
 
+!/tools/
+/tools/*
+!/tools/speaker-amp-id.sh
+
 !/iso/
 /iso/__pycache__/
